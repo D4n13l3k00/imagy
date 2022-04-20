@@ -4,6 +4,11 @@
 
 ![im](https://i.imgur.com/WmUADq1.png)
 
+### Installation
+
+```bash
+cargo install --git https://github.com/D4n13l3k00/imagy
+```
 ### Shortcuts
 
 ```text
