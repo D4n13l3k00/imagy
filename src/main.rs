@@ -15,6 +15,7 @@ fn main() {
         crossterm::terminal::SetTitle("imagy - in-terminal image viewer")
     )
     .unwrap();
+    let __width_scale = if cfg!(windows) { 2.5 } else { 2.0 };
 
     if std::env::args().count() < 2 {
         execute!(
@@ -22,7 +23,7 @@ fn main() {
             SetForegroundColor(Color::Green),
             Print("Usage: "),
             SetForegroundColor(Color::Yellow),
-            Print("imagy <image> [width scale [2.5]]\n"),
+            Print(format!("imagy <image> [width scale [{}]]\n", __width_scale)),
             ResetColor
         )
         .unwrap();
@@ -41,11 +42,14 @@ fn main() {
         .unwrap();
         return;
     };
+    // on windows default scale is 2.5
+    // on linux default scale is 2
 
     let width_scale = match std::env::args().nth(2) {
-        Some(arg) => arg.parse::<f64>().unwrap_or(2.5),
-        None => 2.5,
+        Some(arg) => arg.parse::<f64>().unwrap_or(__width_scale),
+        None => __width_scale,
     };
+    drop(__width_scale);
     let img = image::open(&image_file).unwrap();
 
     execute!(stdout, crossterm::cursor::Hide).unwrap();
