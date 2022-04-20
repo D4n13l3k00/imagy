@@ -30,7 +30,7 @@ fn main() {
         return;
     };
     let image_file = std::env::args().nth(1).unwrap();
-    if !std::path::Path::new(&image_file).exists() {
+    if !std::path::Path::new(&image_file).is_file() {
         execute!(
             stdout,
             SetForegroundColor(Color::Red),
@@ -50,7 +50,20 @@ fn main() {
         None => __width_scale,
     };
     drop(__width_scale);
-    let img = image::open(&image_file).unwrap();
+    let img = image::open(&image_file);
+    if img.is_err() {
+        execute!(
+            stdout,
+            SetForegroundColor(Color::Red),
+            Print("Error: "),
+            SetForegroundColor(Color::Yellow),
+            Print(format!("{}\n", img.unwrap_err().to_string())),
+            ResetColor
+        )
+        .unwrap();
+        return;
+    };
+    let img = img.unwrap();
 
     execute!(stdout, crossterm::cursor::Hide).unwrap();
     let (mut terminal_width, mut terminal_height) = (0, 0);
