@@ -1,22 +1,42 @@
-use std::{io::Write, time::Duration};
-
-use image::GenericImageView;
-
+use crossterm::event::KeyCode;
 use crossterm::{
-    event::Event,
+    cursor,
+    event::{self, Event},
     execute, queue,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    terminal,
 };
+use ctrlc;
+use image::GenericImageView;
+use std::{io::Write, time::Duration};
+
+fn ctrlc_handler() {
+    ctrlc::set_handler(|| {
+        let mut stduot = std::io::stdout();
+        execute!(
+            stduot,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(1, 1),
+            cursor::Show,
+            ResetColor
+        )
+        .unwrap();
+        std::process::exit(0);
+    })
+    .unwrap();
+}
 
 fn main() {
     let mut stdout = std::io::stdout();
+    ctrlc_handler();
     execute!(
         stdout,
-        crossterm::terminal::SetTitle("imagy - in-terminal image viewer")
+        terminal::SetTitle("imagy - in-terminal image viewer")
     )
     .unwrap();
     let __width_scale = if cfg!(windows) { 2.5 } else { 2.0 };
 
+    // parse args
     if std::env::args().count() < 2 {
         execute!(
             stdout,
@@ -42,14 +62,14 @@ fn main() {
         .unwrap();
         return;
     };
-    // on windows default scale is 2.5
-    // on linux default scale is 2
 
+    // getting scale
     let width_scale = match std::env::args().nth(2) {
         Some(arg) => arg.parse::<f64>().unwrap_or(__width_scale),
         None => __width_scale,
     };
-    drop(__width_scale);
+
+    // getting image
     let img = image::open(&image_file);
     if img.is_err() {
         execute!(
@@ -65,43 +85,46 @@ fn main() {
     };
     let img = img.unwrap();
 
-    execute!(stdout, crossterm::cursor::Hide).unwrap();
+    execute!(stdout, cursor::Hide).unwrap();
     let (mut terminal_width, mut terminal_height) = (0, 0);
     let (img_width, img_height) = img.dimensions();
     loop {
-        let (t_width, t_height) = crossterm::terminal::size().unwrap();
+        // actual terminal size
+        let (t_width, t_height) = terminal::size().unwrap();
+
+        // redraw only if terminal size changed
         if t_width != terminal_width || t_height != terminal_height {
             terminal_width = t_width;
             terminal_height = t_height;
 
             let mut printing_img = img.clone();
 
-            printing_img = printing_img.resize_exact(
-                (img_width as f64 * width_scale) as u32,
-                img_height as u32,
-                image::imageops::FilterType::Nearest,
-            );
+            // resize image to fit in terminal
+            printing_img = printing_img
+                .resize_exact(
+                    (img_width as f64 * width_scale) as u32,
+                    img_height as u32,
+                    image::imageops::FilterType::Nearest,
+                )
+                .thumbnail(terminal_width as u32, terminal_height as u32);
 
-            printing_img = printing_img.thumbnail(terminal_width as u32, terminal_height as u32);
-
+            // clear terminal
             queue!(
                 stdout,
-                crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-                crossterm::cursor::MoveTo(0, 0)
+                terminal::Clear(terminal::ClearType::All),
+                cursor::MoveTo(0, 0)
             )
             .unwrap();
 
+            // draw pixel by pixel
             for (x, y, pixel) in printing_img.pixels() {
-                let r = pixel.0[0];
-                let g = pixel.0[1];
-                let b = pixel.0[2];
                 queue!(
                     stdout,
-                    crossterm::cursor::MoveTo(x as u16, y as u16),
+                    cursor::MoveTo(x as u16, y as u16),
                     SetBackgroundColor(Color::Rgb {
-                        r: r as u8,
-                        g: g as u8,
-                        b: b as u8,
+                        r: pixel.0[0] as u8,
+                        g: pixel.0[1] as u8,
+                        b: pixel.0[2] as u8,
                     }),
                     Print(" "),
                     ResetColor
@@ -109,38 +132,47 @@ fn main() {
                 .unwrap();
             }
         }
-
+        // flush for printing
         stdout.flush().unwrap();
 
-        if crossterm::event::poll(Duration::from_millis(100)).unwrap() {
-            if let Event::Key(event) = crossterm::event::read().unwrap() {
-                if event.code == crossterm::event::KeyCode::Char('q')
-                    || event.code == crossterm::event::KeyCode::Esc
-                {
-                    break;
-                } else if event.code == crossterm::event::KeyCode::Char('r') {
-                    terminal_width = 0;
-                    terminal_height = 0;
-                    continue;
-                } else if event.code == crossterm::event::KeyCode::Char('i') {
-                    execute!(
-                        stdout,
-                        crossterm::cursor::MoveTo(0, 0),
-                        Print(format!(
-                            "Image path: {}\nImage size: {}x{}\nTerminal size: {}x{}",
-                            image_file, img_width, img_height, terminal_width, terminal_height
-                        ))
-                    )
-                    .unwrap();
+        // handle keypress
+        if event::poll(Duration::from_millis(10)).unwrap() {
+            if let Event::Key(event) = event::read().unwrap() {
+                match event.code {
+                    KeyCode::Char('q') => {
+                        break;
+                    }
+                    KeyCode::Esc => {
+                        break;
+                    }
+                    KeyCode::Char('r') => {
+                        terminal_width = 0;
+                        terminal_height = 0;
+                        continue;
+                    }
+                    KeyCode::Char('i') => {
+                        execute!(
+                            stdout,
+                            cursor::MoveTo(0, 0),
+                            Print(format!(
+                                "Image path: {}\nImage size: {}x{}\nTerminal size: {}x{}",
+                                image_file, img_width, img_height, terminal_width, terminal_height
+                            ))
+                        )
+                        .unwrap();
+                    }
+                    _ => {}
                 }
             }
         }
     }
+
+    // clear terminal on exit
     execute!(
         stdout,
-        crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-        crossterm::cursor::MoveTo(0, 0),
-        crossterm::cursor::Show
+        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
+        cursor::Show
     )
     .unwrap();
 }
